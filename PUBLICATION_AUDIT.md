@@ -6,9 +6,9 @@ Status: **staged locally, not published**. Authenticated GitHub connector identi
 
 The actual working v0.1.1 source, accepted v0.2.0 and accepted v0.2.1 source are preserved as distinct audited snapshots. Private local Git history includes personal email metadata and documentation paths, so it was backed up locally and not copied into this public history. Snapshot commit messages explicitly disclose reconstruction. Public Git author uses the account's GitHub no-reply address. No force push is planned.
 
-- `v0.1.1` → `45e24c1f708c1ea71d91ae5004b78d3bcc60ee9e`: all original build-input hashes match.
-- `v0.2.0` → `711f7472a1b26474fc871174e6166e1a8907a277`: all original build-input hashes match.
-- `v0.2.1` → `f38a9ab20c78c6171c380e064d445caf2a78aff4`: all original build-input hashes match.
+- `v0.1.1` → `6c90d8c829d5e633de195adcd908fefed174d5bf`: all original build-input hashes match.
+- `v0.2.0` → `68fbbc4beddbf53bae57e7af3e0fda64ded149b2`: all original build-input hashes match.
+- `v0.2.1` → `7d2ed817cac3c18ea3742a2930487488fc4b60cc`: all original build-input hashes match.
 
 All Sources/, Tests/, Resources/, Package.swift, Info.plist and build-app.sh files match the corresponding real version. Publication docs are separate from application code. No source version is fabricated; v0.2.1 completed acceptance before this publication task.
 
@@ -32,3 +32,7 @@ Build/test logs are retained privately, not in public Git history. Source checks
 ## Missing inputs
 
 CODEX_PUBLISH_ALL.md and the supplied professional README were accessible. QuadCastStudio_GitHub_Launch_Kit.zip was not found at the supplied location, Downloads or chat attachments. INSTALL/SECURITY/CONTRIBUTING/LICENSE_REVIEW/issue templates/release-note drafts were prepared from inspected implementation as interim material, not claimed to be the supplied missing files. Reconcile the actual launch kit before publication.
+
+## Owner licensing decision
+
+The owner selected MIT for original app code after the first staging pass. LICENSE and notices were added to each still-unpublished snapshot without changing its build inputs. Source archives were regenerated. Resource artwork remains excluded pending ownership confirmation. The supplied ZIP path was checked again and still returned file-not-found; publishing authentication is not active.
