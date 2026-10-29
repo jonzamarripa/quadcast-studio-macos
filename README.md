@@ -1,13 +1,26 @@
-# QuadCast Studio v0.2.0 — audited source snapshot
+# QuadCast Studio v0.2.1 — audited source snapshot
 
 Unofficial native macOS lighting controller for the original HyperX QuadCast S. Not affiliated with HP or HyperX.
 
-This reconstructed publication snapshot preserves actual accepted v0.2.0 source/build inputs. Private development history remains local. File hashes are in SOURCE_PROVENANCE.json.
+This reconstructed publication snapshot preserves the owner-supplied application/build inputs exactly. Private development history remains local. See SOURCE_PROVENANCE.json for file hashes.
 
-Use full Xcode on Apple Silicon, then run `swift test` and `./build-app.sh`. The app is assembled in `dist/` with local ad-hoc signing. No notarized installer is distributed. Package deployment target is macOS 13; automation was tested on macOS 27.2 with Xcode 27.1, not every supported deployment release.
+## Build
 
-Requires separately installed Homebrew QuadcastRGB 1.0.5 (`brew install quadcastrgb`). No CLI is bundled. Quit competing Terminal lighting controllers with Control+C. Preserve normal microphone audio; there is no audio processing, firmware, gain or physical mute control. Preview/process activity is not LED readback.
+Use full Xcode on Apple Silicon, then run from this directory:
 
-This version adds menu-bar controls, native colors/hex editing, profiles with validated JSON import/export, owned-process recovery, optional login and explicit reconnect-restore consent. Owner reported 8/8 physical checks; the accepted run passed 24 automated tests. These are single-configuration observations.
+```bash
+swift test
+./build-app.sh
+```
 
-QuadcastRGB by Ors1mer is GPL-2.0-only: https://github.com/Ors1mer/QuadcastRGB. Original app code is MIT-licensed; Resources artwork is excluded pending provenance confirmation. Developer ID signing, notarization and another-Mac installation testing remain outstanding. Do not disable Gatekeeper system-wide.
+Builds locally to `dist/QuadCast Studio.app` with ad-hoc signing. No Developer ID signed/notarized installer is supplied. Other macOS releases and Intel installation are not certified. Existing package deployment target is macOS 13; automated validation used macOS 27.2/Xcode 27.1.
+
+Requires separately installed Homebrew QuadcastRGB 1.0.5 (`brew install quadcastrgb`). It is not bundled. Stop Terminal controllers yourself with Control+C before applying. Never disable Gatekeeper system-wide. Device detection/process activity is not LED-state readback; user observation is separate.
+
+Profiles, native color/hex editing, menu-bar control, explicit Apply/Off, login opt-in and reconnect/wake opt-in are preserved. There is no audio recording/processing, physical gain/mute control or firmware function.
+
+The owner reported 8/8 manual checks for this version. Historical automation passed 30 tests; publication validation is recorded on the main branch. These are single-configuration results.
+
+## Attribution and rights
+
+QuadcastRGB by Ors1mer is GPL-2.0-only: https://github.com/Ors1mer/QuadcastRGB. The app invokes the separately installed tool without copying its implementation. Original app code is MIT-licensed. Resources artwork is excluded from that grant pending provenance confirmation. Public binary distribution awaits license review, Developer ID signing, notarization and another-Mac installation testing.

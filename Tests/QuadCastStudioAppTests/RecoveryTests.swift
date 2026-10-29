@@ -27,7 +27,7 @@ final class RecoveryTests: XCTestCase {
         let defaults = UserDefaults(suiteName: UUID().uuidString)!
         let child = Child(), runner = OwnedProcessController(factory: { child })
         var device: USBMicrophone? = USBMicrophone(vendorID: 0x0951, productID: 0x171F, name: "S", registryID: 1)
-        let controller = DeviceController(defaults: defaults, runner: runner, discover: { device }, resolveBackend: { "/opt/homebrew/bin/quadcastrgb" }, monitor: false, settleDelay: 1_000_000)
+        let controller = DeviceController(defaults: defaults, runner: runner, discover: { device }, resolveBackend: { "/opt/homebrew/bin/quadcastrgb" }, monitor: false, settleDelay: 1_000_000, validateBackend: { _ in "1.0.5" })
         try await settled(controller)
         XCTAssertFalse(controller.restoreAfterReconnect)
         XCTAssertEqual(child.starts, 0)
@@ -45,7 +45,7 @@ final class RecoveryTests: XCTestCase {
         let defaults = UserDefaults(suiteName: UUID().uuidString)!
         let child = Child(), runner = OwnedProcessController(factory: { child })
         var device: USBMicrophone? = USBMicrophone(vendorID: 0x03F0, productID: 0x028C, name: "S", registryID: 1)
-        let controller = DeviceController(defaults: defaults, runner: runner, discover: { device }, resolveBackend: { "/opt/homebrew/bin/quadcastrgb" }, monitor: false, settleDelay: 1_000_000)
+        let controller = DeviceController(defaults: defaults, runner: runner, discover: { device }, resolveBackend: { "/opt/homebrew/bin/quadcastrgb" }, monitor: false, settleDelay: 1_000_000, validateBackend: { _ in "1.0.5" })
         try await settled(controller)
         controller.restoreAfterReconnect = true
         controller.apply(.sunset); try await settled(controller)
@@ -64,7 +64,7 @@ final class RecoveryTests: XCTestCase {
     @MainActor func testDisconnectDuringApplyNeverRestartsStaleCommand() async throws {
         let child = Child(), runner = OwnedProcessController(factory: { child })
         var device: USBMicrophone? = USBMicrophone(vendorID: 0x0951, productID: 0x171F, name: "S", registryID: 1)
-        let controller = DeviceController(defaults: UserDefaults(suiteName: UUID().uuidString)!, runner: runner, discover: { device }, resolveBackend: { "/opt/homebrew/bin/quadcastrgb" }, monitor: false, settleDelay: 1_000_000)
+        let controller = DeviceController(defaults: UserDefaults(suiteName: UUID().uuidString)!, runner: runner, discover: { device }, resolveBackend: { "/opt/homebrew/bin/quadcastrgb" }, monitor: false, settleDelay: 1_000_000, validateBackend: { _ in "1.0.5" })
         try await settled(controller)
         controller.apply(.studioCyan)
         controller.apply(.onAir) // rapid second apply must not spawn a competitor
@@ -76,7 +76,7 @@ final class RecoveryTests: XCTestCase {
     @MainActor func testUnexpectedExitAndUnsupportedDevice() async throws {
         let child = Child(), runner = OwnedProcessController(factory: { child })
         var device = USBMicrophone(vendorID: 0x0951, productID: 0x171F, name: "S", registryID: 1)
-        let controller = DeviceController(defaults: UserDefaults(suiteName: UUID().uuidString)!, runner: runner, discover: { device }, resolveBackend: { "/opt/homebrew/bin/quadcastrgb" }, monitor: false, settleDelay: 1_000_000)
+        let controller = DeviceController(defaults: UserDefaults(suiteName: UUID().uuidString)!, runner: runner, discover: { device }, resolveBackend: { "/opt/homebrew/bin/quadcastrgb" }, monitor: false, settleDelay: 1_000_000, validateBackend: { _ in "1.0.5" })
         try await settled(controller)
         controller.apply(.studioCyan); try await settled(controller)
         child.crash(); XCTAssertEqual(controller.state, .error); XCTAssertEqual(child.starts, 1)
@@ -110,5 +110,32 @@ extension RecoveryTests {
         for (vendor, product) in [(0x03F0, 0x098C), (0x03F0, 0x09AF), (0x0951, 0x16DF), (0xFFFF, 0x171F), (0x03F0, 0xFFFF)] {
             XCTAssertFalse(USBMicrophone(vendorID: vendor, productID: product, name: "QuadCast S", registryID: 1).isSupported)
         }
+    }
+}
+
+extension RecoveryTests {
+    @MainActor func testWakeWithChangedRegistryDoesNotStopRestoredController() async throws {
+        let child = Child(), runner = OwnedProcessController(factory: { child })
+        var device = USBMicrophone(vendorID: 0x0951, productID: 0x171F, name: "S", registryID: 1)
+        let controller = DeviceController(defaults: UserDefaults(suiteName: UUID().uuidString)!, runner: runner, discover: { device }, resolveBackend: { "/opt/homebrew/bin/quadcastrgb" }, monitor: false, settleDelay: 1_000_000, validateBackend: { _ in "1.0.5" })
+        try await settled(controller)
+        controller.restoreAfterReconnect = true
+        controller.apply(.studioCyan); try await settled(controller)
+        controller.prepareForSleep(); try await settled(controller)
+        device = USBMicrophone(vendorID: 0x0951, productID: 0x171F, name: "S", registryID: 2)
+        controller.wake(); try await settled(controller)
+        XCTAssertEqual(child.starts, 2)
+        XCTAssertTrue(child.isRunning)
+        XCTAssertEqual(controller.state, .active)
+        let stopped = await controller.shutdown(); XCTAssertTrue(stopped)
+    }
+    @MainActor func testIncompatibleBackendDoesNotLaunchLighting() async throws {
+        let child = Child(), runner = OwnedProcessController(factory: { child })
+        let controller = DeviceController(defaults: UserDefaults(suiteName: UUID().uuidString)!, runner: runner, discover: { USBMicrophone(vendorID: 0x0951, productID: 0x171F, name: "S", registryID: 1) }, resolveBackend: { "/opt/homebrew/bin/quadcastrgb" }, monitor: false, validateBackend: { _ in throw BackendCheckError.unsupportedVersion })
+        try await settled(controller)
+        controller.apply(.studioCyan); try await settled(controller)
+        XCTAssertEqual(child.starts, 0); XCTAssertEqual(controller.state, .error)
+        XCTAssertTrue(controller.lastError?.contains("1.0.5") == true)
+        let stopped = await controller.shutdown(); XCTAssertTrue(stopped)
     }
 }

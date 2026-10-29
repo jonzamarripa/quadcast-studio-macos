@@ -63,8 +63,8 @@ enum ControlState: Equatable {
     var label: String {
         switch self {
         case .disconnected: return "Disconnected"
-        case .missingBackend: return "Controller unavailable"
-        case .ready: return "Connected · ready"
+        case .missingBackend: return "QuadcastRGB not installed"
+        case .ready: return "USB detected · awaiting Apply"
         case .applying: return "Applying lighting…"
         case .active: return "Control active · not visually verified"
         case .verified: return "Lighting verified by you"
@@ -87,6 +87,9 @@ final class DeviceController: ObservableObject {
     @Published var restoreAfterReconnect: Bool {
         didSet { defaults.set(restoreAfterReconnect, forKey: "QuadCastStudio.RestoreAfterReconnect"); if !restoreAfterReconnect { restorePending = false } }
     }
+    private let backendProbe = BackendProbe()
+    private let validateBackend: ((String) async throws -> String)?
+    @Published private(set) var backendVersion: String?
     private let runner: OwnedProcessController
     private let defaults: UserDefaults
     private let discover: () -> USBMicrophone?
@@ -106,7 +109,8 @@ final class DeviceController: ObservableObject {
          discover: @escaping () -> USBMicrophone? = { QuadCastUSBDetector.findOriginalQuadCastS() },
          resolveBackend: @escaping () -> String? = {
              ["/opt/homebrew/bin/quadcastrgb", "/usr/local/bin/quadcastrgb"].first { FileManager.default.isExecutableFile(atPath: $0) }
-         }, monitor: Bool = true, settleDelay: UInt64 = 700_000_000) {
+         }, monitor: Bool = true, settleDelay: UInt64 = 700_000_000, validateBackend: ((String) async throws -> String)? = nil) {
+        self.validateBackend = validateBackend
         self.settleDelay = settleDelay
         self.defaults = defaults; self.runner = runner ?? OwnedProcessController(); self.discover = discover; self.resolveBackend = resolveBackend
         restoreAfterReconnect = defaults.bool(forKey: "QuadCastStudio.RestoreAfterReconnect")
@@ -132,9 +136,10 @@ final class DeviceController: ObservableObject {
     var ownedPID: Int32? { runner.pid }
     var diagnostics: String {
         """
-        QuadCast Studio 0.2 — Local Diagnostics
+        QuadCast Studio 0.2.1 — Local Diagnostics
         USB: \(microphone.map { "\($0.name) [\($0.identifier)] registry \($0.registryID)" } ?? "Not detected")
         Backend: \(backendPath ?? "Not installed at an allowed path")
+        Backend version preflight: \(backendVersion ?? "Not checked; runs before Apply")
         Status: \(state.label)
         Owned PID: \(runner.pid.map(String.init) ?? "None")
         Owned process running: \(runner.isRunning)
@@ -143,8 +148,8 @@ final class DeviceController: ObservableObject {
         Restore after reconnect: \(restoreAfterReconnect)
         Last attempt: \(lastAttempt?.formatted() ?? "Never")
         Arguments: \(lastCommand)
-        Error: \(lastError ?? "None")
-        Output (last 3000 characters): \(lastOutput.isEmpty ? "None" : lastOutput)
+        Error: \(DiagnosticsRedaction.text(lastError ?? "None"))
+        Output (last 3000 characters): \(DiagnosticsRedaction.text(lastOutput.isEmpty ? "None" : lastOutput))
 
         Requested lighting only; no RGB state readback or audio capture.
         Reported Terminal test: QuadcastRGB 1.0.5 changed original-S RGB.
@@ -158,7 +163,8 @@ final class DeviceController: ObservableObject {
         let backend = resolveBackend()
         let changed = latest != microphone || backend != backendPath
         if changed {
-            if microphone != nil, lastApplied != nil { restorePending = restoreAfterReconnect }
+            if microphone != nil, latest != microphone, lastApplied != nil { restorePending = restoreAfterReconnect }
+            if backend != backendPath { backendVersion = nil }
             microphone = latest; backendPath = backend
             generation += 1; recoveryNeeded = true
             lastError = nil; lastOutput = ""
@@ -202,6 +208,10 @@ final class DeviceController: ObservableObject {
             guard let self else { return }
             defer { self.finishOperation() }
             do {
+                self.backendVersion = nil
+                // Validate the dependency before interrupting the current lighting command.
+                if let validate = self.validateBackend { self.backendVersion = try await validate(executable) }
+                else { self.backendVersion = try await self.backendProbe.check(executable: executable) }
                 try await self.runner.stop()
                 // Re-enumerate after the asynchronous shutdown; no stale-device restart.
                 self.refreshConnection()
@@ -227,8 +237,10 @@ final class DeviceController: ObservableObject {
     }
     func wake() {
         sleeping = false
+        // Set pending work before refresh: refresh may already schedule restoration.
+        recoveryNeeded = true
         refreshConnection()
-        recoveryNeeded = true; reconcile()
+        reconcile()
     }
     func confirmHardwareChanged() {
         guard state == .active, runner.isRunning, microphone != nil else { return }
@@ -243,7 +255,7 @@ final class DeviceController: ObservableObject {
     func shutdown() async -> Bool {
         quitting = true; generation += 1; recoveryNeeded = false; restorePending = false
         if let operation { await operation.value }
-        do { try await runner.stop(); return true }
+        do { try await backendProbe.stop(); try await runner.stop(); return true }
         catch { lastError = error.localizedDescription; state = .error; quitting = false; return false }
     }
 }
