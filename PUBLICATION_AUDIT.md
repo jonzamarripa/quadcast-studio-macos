@@ -1,14 +1,14 @@
 # Publication audit — 2026-10-29
 
-Status: **staged locally, not published**. Authenticated GitHub connector identity is jonzamarripa; intended public repository is quadcast-studio-macos. Repository lookup returned not found. Additional publishing authorization is pending; no repository creation/upload was attempted.
+Status: **published source-only** at https://github.com/jonzamarripa/quadcast-studio-macos. Repository is public, Issues enabled, main and three distinct version tags verified. All three source Releases and their ZIP/checksum downloads were verified after publication. No app installer is included.
 
 ## Provenance
 
 The actual working v0.1.1 source, accepted v0.2.0 and accepted v0.2.1 source are preserved as distinct audited snapshots. Private local Git history includes personal email metadata and documentation paths, so it was backed up locally and not copied into this public history. Snapshot commit messages explicitly disclose reconstruction. Public Git author uses the account's GitHub no-reply address. No force push is planned.
 
-- `v0.1.1` → `6c90d8c829d5e633de195adcd908fefed174d5bf`: all original build-input hashes match.
-- `v0.2.0` → `68fbbc4beddbf53bae57e7af3e0fda64ded149b2`: all original build-input hashes match.
-- `v0.2.1` → `7d2ed817cac3c18ea3742a2930487488fc4b60cc`: all original build-input hashes match.
+- `v0.1.1` → `769cdceed0c6a17f0f89453e4714bcedb3641f44`: all original build-input hashes match.
+- `v0.2.0` → `1682076ec0df3426403b329321415f37baf03106`: all original build-input hashes match.
+- `v0.2.1` → `e3c7de403f02c871b4c18f8553eae9d76cdd499b`: all original build-input hashes match.
 
 All Sources/, Tests/, Resources/, Package.swift, Info.plist and build-app.sh files match the corresponding real version. Publication docs are separate from application code. No source version is fabricated; v0.2.1 completed acceptance before this publication task.
 
@@ -36,3 +36,9 @@ The owner authorized proceeding without the failed ZIP download and supplied the
 ## Owner licensing decision
 
 The owner selected MIT for original app code after the first staging pass. LICENSE and notices were added to each still-unpublished snapshot without changing its build inputs. Source archives were regenerated. Resource artwork remains excluded pending ownership confirmation. The owner subsequently authorized proceeding without the ZIP. Publishing authentication is now active for jonzamarripa.
+
+## Remote verification
+
+The local Git client had no credential-helper login, so the authorized GitHub API imported verified blobs/trees and snapshot commits following an initial repository seed. Every remote tree SHA matched its audited local tree. Public snapshot SHAs differ from earlier unpublished local snapshots because the public history includes that initial seed. No force push or unrelated history replacement occurred. A public fetch independently retrieved main/tag objects.
+
+All six public asset downloads passed SHA-256 verification. The three source ZIPs also passed per-file original build-input manifest verification. MIT and artwork exclusions are present in each published tag. Repository topics are macos, swiftui, hyperx, quadcast-s, rgb, usb and microphone. No secrets or original private Git author emails were transferred. Existing validated local projects remain unchanged.

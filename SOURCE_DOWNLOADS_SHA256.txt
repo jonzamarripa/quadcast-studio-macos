@@ -1,0 +1,3 @@
+30774edb3daf641f2de731e658d59c439aa29be9bb85cd0445b4cc047566952e  QuadCastStudio-v0.1.1-source.zip
+83102273872e476d32713a5619ba719ae3a67da14cf8811f393df11e53973398  QuadCastStudio-v0.2.0-source.zip
+2f8ddff49883b03e6b93f3f3970f692fded00d193cdd298090753bc9ad7e75c0  QuadCastStudio-v0.2.1-source.zip

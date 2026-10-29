@@ -1,10 +1,10 @@
 # Changelog
 
-## v0.2.1 — completed; source release pending publication
+## v0.2.1 — published source release
 
 Read-only QuadcastRGB 1.0.5 preflight, wake/USB identity restoration-order fix, diagnostic home-path redaction, six additional tests and release-hardening docs. Prior accepted run passed 30 tests; user reported all eight physical smoke checks passed. No notarized installer.
 
-## v0.2.0 — completed; source release pending publication
+## v0.2.0 — published source release
 
 Shared menu-bar controls, profile rename/duplicate/delete/favorite and validated JSON import/export, owned-process lifecycle/recovery, optional launch at login and explicit reconnect restoration. Prior accepted run passed 24 tests; user reported eight physical checks passed. No notarized installer.
 

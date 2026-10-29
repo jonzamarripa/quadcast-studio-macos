@@ -21,15 +21,24 @@ QuadCast Studio gives owners of the **original HyperX QuadCast S** a Mac-native 
 
 ## Downloads and versions
 
-Source releases are staged locally but are **not yet published**. No ready-to-install app binary is offered:
+The verified [GitHub Releases](https://github.com/jonzamarripa/quadcast-studio-macos/releases) provide source archives and SHA-256 checksums. **No ready-to-install app binary is offered.**
 
 | Release | Description | Status |
 |---|---|---|
-| **v0.2.0** | Menu bar, profiles, improved reliability, diagnostics, accessibility | Personal-use tested; public distribution requires remaining checks |
-| **v0.1.1** | First functioning SwiftUI prototype | Historical version; source archive recommended |
-| **v0.2.1** | Dependency preflight, wake-recovery fix, diagnostic privacy | Completed and personally accepted; source publication pending |
+| [**v0.2.0**](https://github.com/jonzamarripa/quadcast-studio-macos/releases/tag/v0.2.0) | Menu bar, profiles, improved reliability, diagnostics, accessibility labels | Published source release; accepted on creator’s tested configuration |
+| [**v0.1.1**](https://github.com/jonzamarripa/quadcast-studio-macos/releases/tag/v0.1.1) | First functioning SwiftUI prototype | Published historical source release |
+| [**v0.2.1**](https://github.com/jonzamarripa/quadcast-studio-macos/releases/tag/v0.2.1) | Dependency preflight, wake-recovery fix, diagnostic privacy | Latest accepted source release; 30 passing tests |
 
 > **For macOS users:** An ad-hoc signed build is *not* Developer ID notarized, and macOS Gatekeeper may block running downloaded builds. A signed/notarized package is required for a smooth public installation experience. Never disable macOS security system-wide to run this application. A source build may be an option for advanced users while distribution signing is pending.
+
+### Direct source downloads
+
+- [v0.2.1 source ZIP](https://github.com/jonzamarripa/quadcast-studio-macos/releases/download/v0.2.1/QuadCastStudio-v0.2.1-source.zip) — recommended source version.
+- [v0.2.0 source ZIP](https://github.com/jonzamarripa/quadcast-studio-macos/releases/download/v0.2.0/QuadCastStudio-v0.2.0-source.zip).
+- [v0.1.1 source ZIP](https://github.com/jonzamarripa/quadcast-studio-macos/releases/download/v0.1.1/QuadCastStudio-v0.1.1-source.zip).
+- [SHA-256 checksums](https://github.com/jonzamarripa/quadcast-studio-macos/releases/download/v0.2.1/SHA256SUMS.txt).
+
+These ZIPs contain audited source, not a macOS installer. All six release downloads were fetched after publication and verified against SHA-256 values; each source archive's manifest matches the accepted original build inputs.
 
 ## Compatibility
 
