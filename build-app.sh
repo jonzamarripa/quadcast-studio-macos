@@ -4,6 +4,11 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")" && pwd)"
 cd "$ROOT"
 
+SWIFT_ARGS=(--package-path "$ROOT")
+# Optional build settings for restricted development workspaces. No arbitrary command text.
+if [[ "${BUILD_SYSTEM:-}" == "native" ]]; then SWIFT_ARGS+=(--build-system native); fi
+if [[ "${DISABLE_PACKAGE_SANDBOX:-0}" == "1" ]]; then SWIFT_ARGS+=(--disable-sandbox); fi
+
 if [[ "$(uname -s)" != "Darwin" ]]; then
   echo "This app must be built on macOS with Apple Command Line Tools or Xcode." >&2
   exit 1
@@ -25,11 +30,11 @@ elif [[ "${SKIP_TESTS:-0}" == "1" ]]; then
   echo "[1/5] SKIPPED unit tests at user request (SKIP_TESTS=1)."
 else
   echo "[1/5] Building and running XCTest unit tests..."
-  swift test
+  swift test "${SWIFT_ARGS[@]}"
 fi
 
 echo "[2/5] Compiling native release binary (QuadCastStudio only)..."
-if ! swift build -c release --product QuadCastStudio; then
+if ! swift build "${SWIFT_ARGS[@]}" -c release --product QuadCastStudio; then
   echo "Release compilation failed. If SwiftUI/SDK modules are unavailable, install full Xcode and select it." >&2
   exit 1
 fi
@@ -38,21 +43,14 @@ APP="$ROOT/dist/QuadCast Studio.app"
 MACOS="$APP/Contents/MacOS"
 RESOURCES="$APP/Contents/Resources"
 mkdir -p "$MACOS" "$RESOURCES"
-cp "$ROOT/.build/release/QuadCastStudio" "$MACOS/QuadCastStudio"
+BIN_DIR="$(swift build "${SWIFT_ARGS[@]}" -c release --show-bin-path)"
+cp "$BIN_DIR/QuadCastStudio" "$MACOS/QuadCastStudio"
 cp "$ROOT/Info.plist" "$APP/Contents/Info.plist"
 chmod 755 "$MACOS/QuadCastStudio"
 
-echo "[3/5] Generating the application icon..."
-ICONSET="$ROOT/.build/QuadCastStudio.iconset"
-mkdir -p "$ICONSET"
-for entry in "16:icon_16x16.png" "32:icon_16x16@2x.png" "32:icon_32x32.png" "64:icon_32x32@2x.png" "128:icon_128x128.png" "256:icon_128x128@2x.png" "256:icon_256x256.png" "512:icon_256x256@2x.png" "512:icon_512x512.png"; do
-  px="${entry%%:*}"
-  filename="${entry#*:}"
-  /usr/bin/sips -z "$px" "$px" "$ROOT/Resources/Icon1024.png" \
-    --out "$ICONSET/$filename" >/dev/null
-done
-cp "$ROOT/Resources/Icon1024.png" "$ICONSET/icon_512x512@2x.png"
-/usr/bin/iconutil -c icns "$ICONSET" -o "$RESOURCES/QuadCastStudio.icns"
+echo "[3/5] Copying the unchanged application icon..."
+# Preserved from the working v0.1.1 app; no icon redesign in this release.
+cp "$ROOT/Resources/QuadCastStudio.icns" "$RESOURCES/QuadCastStudio.icns"
 
 echo "[4/5] Ad-hoc signing the local application..."
 /usr/bin/codesign --force --sign - "$APP"

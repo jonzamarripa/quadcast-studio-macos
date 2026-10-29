@@ -9,7 +9,9 @@ struct USBMicrophone: Equatable {
     let vendorID: Int
     let productID: Int
     let name: String
+    let registryID: UInt64
 
+    var isSupported: Bool { ["0951:171F", "03F0:0F8B", "03F0:028C", "03F0:048C", "03F0:068C"].contains(identifier) }
     var identifier: String { String(format: "%04X:%04X", vendorID, productID) }
 }
 
@@ -36,7 +38,9 @@ enum QuadCastUSBDetector {
                 let id = String(format: "%04X:%04X", vendor, product)
                 guard originalIDs.contains(id) else { continue }
                 let name = string("USB Product Name", on: service) ?? "HyperX QuadCast S"
-                return USBMicrophone(vendorID: vendor, productID: product, name: name)
+                var registryID: UInt64 = 0
+                IORegistryEntryGetRegistryEntryID(service, &registryID)
+                return USBMicrophone(vendorID: vendor, productID: product, name: name, registryID: registryID)
             }
         }
         return nil
@@ -75,202 +79,171 @@ final class DeviceController: ObservableObject {
     @Published private(set) var backendPath: String?
     @Published private(set) var state: ControlState = .disconnected
     @Published private(set) var lastError: String?
-    @Published private(set) var lastCommand: String = "None"
-    @Published private(set) var lastOutput: String = ""
+    @Published private(set) var lastCommand = "None"
+    @Published private(set) var lastOutput = ""
     @Published private(set) var lastAttempt: Date?
-
-    private var ownedProcess: Process?
-    private var outputPipe: Pipe?
-    private var activeConfiguration: LightingConfiguration?
-    private var isReplacing = false
-
-    init() { refreshConnection() }
-
-    var canApply: Bool {
-        microphone != nil && backendPath != nil && !isReplacing
+    @Published private(set) var busy = false
+    @Published private(set) var sleeping = false
+    @Published var restoreAfterReconnect: Bool {
+        didSet { defaults.set(restoreAfterReconnect, forKey: "QuadCastStudio.RestoreAfterReconnect"); if !restoreAfterReconnect { restorePending = false } }
     }
+    private let runner: OwnedProcessController
+    private let defaults: UserDefaults
+    private let discover: () -> USBMicrophone?
+    private let resolveBackend: () -> String?
+    private var subscriptions = Set<AnyCancellable>()
+    private var generation = 0
+    private var recoveryNeeded = false
+    private var restorePending = false
+    private var quitting = false
+    private var lastApplied: LightingConfiguration?
+    private var operation: Task<Void, Never>?
+    private let settleDelay: UInt64
+    private let lastKey = "QuadCastStudio.LastApplied.v1"
 
+    init(defaults: UserDefaults = .standard,
+         runner: OwnedProcessController? = nil,
+         discover: @escaping () -> USBMicrophone? = { QuadCastUSBDetector.findOriginalQuadCastS() },
+         resolveBackend: @escaping () -> String? = {
+             ["/opt/homebrew/bin/quadcastrgb", "/usr/local/bin/quadcastrgb"].first { FileManager.default.isExecutableFile(atPath: $0) }
+         }, monitor: Bool = true, settleDelay: UInt64 = 700_000_000) {
+        self.settleDelay = settleDelay
+        self.defaults = defaults; self.runner = runner ?? OwnedProcessController(); self.discover = discover; self.resolveBackend = resolveBackend
+        restoreAfterReconnect = defaults.bool(forKey: "QuadCastStudio.RestoreAfterReconnect")
+        if let data = defaults.data(forKey: lastKey), let config = try? JSONDecoder().decode(LightingConfiguration.self, from: data), (try? config.arguments()) != nil { lastApplied = config }
+        self.runner.onOutput = { [weak self] text in
+            guard let self else { return }
+            self.lastOutput = String((self.lastOutput + text).suffix(3000))
+        }
+        self.runner.onUnexpectedExit = { [weak self] status in
+            guard let self else { return }
+            self.generation += 1
+            self.lastError = "QuadcastRGB exited (status \(status)). No automatic retry was made. Check USB and stop any Terminal controller with Control+C, then apply again."
+            self.state = self.microphone == nil ? .disconnected : .error
+        }
+        refreshConnection()
+        if monitor {
+            Timer.publish(every: 2.5, on: .main, in: .common).autoconnect().sink { [weak self] _ in self?.refreshConnection() }.store(in: &subscriptions)
+            NSWorkspace.shared.notificationCenter.publisher(for: NSWorkspace.willSleepNotification).sink { [weak self] _ in self?.prepareForSleep() }.store(in: &subscriptions)
+            NSWorkspace.shared.notificationCenter.publisher(for: NSWorkspace.didWakeNotification).sink { [weak self] _ in self?.wake() }.store(in: &subscriptions)
+        }
+    }
+    var canApply: Bool { microphone != nil && backendPath != nil && !busy && !sleeping && !quitting }
+    var ownedPID: Int32? { runner.pid }
     var diagnostics: String {
-        let mic = microphone.map { "\($0.name) [\($0.identifier)]" } ?? "Not detected"
-        let controller = backendPath ?? "Not installed at a supported path"
-        let pid = ownedProcess.map { String($0.processIdentifier) } ?? "None"
-        let time = lastAttempt.map { $0.formatted(date: .abbreviated, time: .standard) } ?? "Never"
-        return """
-        QuadCast Studio — Local Diagnostics
-        USB original QuadCast S: \(mic)
-        Backend: \(controller)
+        """
+        QuadCast Studio 0.2 — Local Diagnostics
+        USB: \(microphone.map { "\($0.name) [\($0.identifier)] registry \($0.registryID)" } ?? "Not detected")
+        Backend: \(backendPath ?? "Not installed at an allowed path")
         Status: \(state.label)
-        Owned controller PID: \(pid)
-        Last attempt: \(time)
-        Last command arguments: \(lastCommand)
-        Last error: \(lastError ?? "None")
-        Controller output: \(lastOutput.isEmpty ? "None" : lastOutput)
+        Owned PID: \(runner.pid.map(String.init) ?? "None")
+        Owned process running: \(runner.isRunning)
+        Transition in progress: \(busy)
+        Sleeping: \(sleeping)
+        Restore after reconnect: \(restoreAfterReconnect)
+        Last attempt: \(lastAttempt?.formatted() ?? "Never")
+        Arguments: \(lastCommand)
+        Error: \(lastError ?? "None")
+        Output (last 3000 characters): \(lastOutput.isEmpty ? "None" : lastOutput)
 
-        Notes: RGB previews are requested values, not LED-state readback.
-        No microphone audio is captured by this app.
+        Requested lighting only; no RGB state readback or audio capture.
+        Reported Terminal test: QuadcastRGB 1.0.5 changed original-S RGB.
+        App hardware verification applies only to a user-confirmed current session.
         """
     }
-
     func refreshConnection() {
-        let latestDevice = QuadCastUSBDetector.findOriginalQuadCastS()
-        let latestBackend = ["/opt/homebrew/bin/quadcastrgb", "/usr/local/bin/quadcastrgb"]
-            .first(where: { FileManager.default.isExecutableFile(atPath: $0) })
-        let changed = latestDevice != microphone
-        microphone = latestDevice
-        backendPath = latestBackend
-
+        guard !quitting else { return }
+        let detected = discover()
+        let latest = detected?.isSupported == true ? detected : nil
+        let backend = resolveBackend()
+        let changed = latest != microphone || backend != backendPath
         if changed {
-            lastError = nil
-            lastOutput = ""
-            activeConfiguration = nil
-            if let running = ownedProcess {
-                // Never terminate a process started from Terminal or by other apps.
-                ownedProcess = nil
-                running.terminationHandler = nil
-                if running.isRunning { running.terminate() }
-            }
-        }
-
-        if microphone == nil {
-            state = .disconnected
-        } else if backendPath == nil {
-            state = .missingBackend
-        } else if lastError != nil {
-            state = .error
-        } else if let current = ownedProcess {
-            if !current.isRunning {
-                ownedProcess = nil
-                lastError = "The QuadcastRGB controller stopped. Reapply lighting to retry."
-                state = .error
-            }
-        } else if !isReplacing {
-            state = .ready
+            if microphone != nil, lastApplied != nil { restorePending = restoreAfterReconnect }
+            microphone = latest; backendPath = backend
+            generation += 1; recoveryNeeded = true
+            lastError = nil; lastOutput = ""
+            state = latest == nil ? .disconnected : (backend == nil ? .missingBackend : .ready)
+            reconcile()
+        } else if microphone == nil { state = .disconnected }
+        else if backendPath == nil { state = .missingBackend }
+    }
+    private func reconcile() {
+        guard recoveryNeeded, !busy, !quitting else { return }
+        recoveryNeeded = false
+        let restore = restorePending && restoreAfterReconnect && !sleeping && microphone != nil && backendPath != nil
+        if restore { restorePending = false }
+        if restore, let config = lastApplied { apply(config); return }
+        busy = true
+        operation = Task { [weak self] in
+            guard let self else { return }
+            defer { self.finishOperation() }
+            do {
+                try await self.runner.stop()
+                self.state = self.microphone == nil ? .disconnected : (self.backendPath == nil ? .missingBackend : .ready)
+            } catch { self.lastError = error.localizedDescription; self.state = .error }
         }
     }
-
+    private func finishOperation() {
+        busy = false; operation = nil
+        reconcile()
+    }
     func apply(_ configuration: LightingConfiguration) {
-        guard !isReplacing else { return }
-        Task { await applyAsync(configuration) }
+        guard canApply else { return }
+        let arguments: [String]
+        do { arguments = try configuration.arguments() }
+        catch { lastError = error.localizedDescription; state = .error; return }
+        busy = true; state = .applying; lastError = nil; lastOutput = ""
+        generation += 1
+        let requestGeneration = generation
+        let requestedDevice = microphone
+        let executable = backendPath!
+        lastAttempt = Date(); lastCommand = arguments.joined(separator: " ")
+        operation = Task { [weak self] in
+            guard let self else { return }
+            defer { self.finishOperation() }
+            do {
+                try await self.runner.stop()
+                // Re-enumerate after the asynchronous shutdown; no stale-device restart.
+                self.refreshConnection()
+                guard self.generation == requestGeneration, self.microphone == requestedDevice,
+                      self.backendPath == executable, !self.sleeping, !self.quitting else { return }
+                try self.runner.start(executable: executable, arguments: arguments)
+                try await Task.sleep(nanoseconds: self.settleDelay)
+                guard self.generation == requestGeneration, self.runner.isRunning else { return }
+                self.lastApplied = configuration
+                if let data = try? JSONEncoder().encode(configuration) { self.defaults.set(data, forKey: self.lastKey) }
+                self.state = .active
+            } catch { self.lastError = error.localizedDescription; self.state = self.microphone == nil ? .disconnected : .error }
+        }
     }
-
-    private func applyAsync(_ configuration: LightingConfiguration) async {
-        guard !isReplacing else { return }
+    func stopController() {
+        generation += 1; restorePending = false; recoveryNeeded = true
+        reconcile()
+    }
+    func prepareForSleep() {
+        sleeping = true; generation += 1
+        restorePending = restoreAfterReconnect && lastApplied != nil
+        recoveryNeeded = true; reconcile()
+    }
+    func wake() {
+        sleeping = false
         refreshConnection()
-        guard let executable = backendPath, microphone != nil else { return }
-
-        let args: [String]
-        do { args = try configuration.arguments() }
-        catch {
-            lastError = error.localizedDescription
-            state = .error
-            return
-        }
-
-        isReplacing = true
-        state = .applying
-        lastError = nil
-        lastOutput = ""
-        lastAttempt = Date()
-        lastCommand = args.joined(separator: " ")
-        defer { isReplacing = false }
-
-        guard await stopOwnedProcess() else {
-            lastError = "Existing app-owned lighting process did not stop. Quit and reopen QuadCast Studio before trying again."
-            state = .error
-            return
-        }
-        guard microphone != nil else {
-            state = .disconnected
-            return
-        }
-
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: executable)
-        process.arguments = args
-        process.currentDirectoryURL = URL(fileURLWithPath: NSHomeDirectory())
-        let pipe = Pipe()
-        outputPipe = pipe
-        process.standardError = pipe
-        process.standardOutput = pipe
-        pipe.fileHandleForReading.readabilityHandler = { [weak self] fileHandle in
-            let data = fileHandle.availableData
-            if data.isEmpty {
-                fileHandle.readabilityHandler = nil
-                return
-            }
-            let message = String(decoding: data, as: UTF8.self)
-            Task { @MainActor [weak self] in
-                guard let self else { return }
-                self.lastOutput = String((self.lastOutput + message).suffix(3000))
-            }
-        }
-        process.terminationHandler = { [weak self] finished in
-            Task { @MainActor [weak self] in
-                guard let self, self.ownedProcess === finished else { return }
-                self.ownedProcess = nil
-                self.outputPipe?.fileHandleForReading.readabilityHandler = nil
-                self.outputPipe = nil
-                self.activeConfiguration = nil
-                self.lastError = "QuadcastRGB exited (status \(finished.terminationStatus)). "
-                    + "If a Terminal copy is still running, stop it with Control+C. "
-                    + (self.lastOutput.isEmpty ? "Check USB connection and retry." : self.lastOutput)
-                self.state = self.microphone == nil ? .disconnected : .error
-            }
-        }
-
-        do {
-            try process.run()
-            ownedProcess = process
-            activeConfiguration = configuration
-            // QuadcastRGB on macOS intentionally remains running as it sends LED
-            // sequences. A running process indicates control is active, not proof
-            // that the LEDs physically changed.
-            try? await Task.sleep(nanoseconds: 700_000_000)
-            if ownedProcess === process, process.isRunning, microphone != nil {
-                state = .active
-            }
-        } catch {
-            pipe.fileHandleForReading.readabilityHandler = nil
-            outputPipe = nil
-            activeConfiguration = nil
-            lastError = "Could not launch QuadcastRGB: \(error.localizedDescription)"
-            state = .error
-        }
+        recoveryNeeded = true; reconcile()
     }
-
     func confirmHardwareChanged() {
-        guard microphone != nil, ownedProcess?.isRunning == true, state == .active else { return }
+        guard state == .active, runner.isRunning, microphone != nil else { return }
         state = .verified
     }
-
     func reportNoChange() {
-        guard microphone != nil else { return }
-        lastError = "No visible RGB change. Confirm the microphone is unmuted and no Terminal controller is competing."
+        guard state == .active || state == .verified else { return }
+        lastError = "No visible RGB change. Check physical mute indication and stop competing Terminal controllers with Control+C."
         state = .error
     }
-
-    /// Returns false rather than starting a second controller if shutdown stalls.
-    private func stopOwnedProcess() async -> Bool {
-        guard let current = ownedProcess else { return true }
-        current.terminationHandler = nil
-        outputPipe?.fileHandleForReading.readabilityHandler = nil
-        if current.isRunning { current.terminate() }
-        let finished = await Task.detached(priority: .utility) { () -> Bool in
-            for _ in 0..<20 {
-                if !current.isRunning { return true }
-                Thread.sleep(forTimeInterval: 0.1)
-            }
-            return !current.isRunning
-        }.value
-        if finished {
-            ownedProcess = nil
-            outputPipe = nil
-            return true
-        }
-        return false
-    }
-
-    func stopForQuit() {
-        if let current = ownedProcess, current.isRunning { current.terminate() }
+    /// Called by the app delegate before agreeing to quit. A timeout keeps the app open.
+    func shutdown() async -> Bool {
+        quitting = true; generation += 1; recoveryNeeded = false; restorePending = false
+        if let operation { await operation.value }
+        do { try await runner.stop(); return true }
+        catch { lastError = error.localizedDescription; state = .error; quitting = false; return false }
     }
 }

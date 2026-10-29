@@ -1,14 +1,22 @@
 {
-  "version": "v0.1.1",
-  "publication": "reconstructed audited source snapshot; no original Git repository supplied",
+  "version": "v0.2.0",
+  "publication": "reconstructed audited source snapshot; private local history retained separately",
+  "local_baseline_commit": "5cb72ac",
   "unchanged_build_inputs_sha256": {
-    "build-app.sh": "932ba3aad116797e73632a2b7f129f0833354920aca8ebd89f3bb668641de769",
-    "Package.swift": "1770c84695398cb796679b4aff491a2734c284677f9d5208b52f258597d23d8a",
-    "Info.plist": "eafabc4844e26de9fb1181cbbcd2a1dd84584b0e6c62ed02760a100eaf364694",
+    "build-app.sh": "d5f1f29ee67b8fa6bad532d1230b2cf085924ea485cc6b72c4b7032a552ad71d",
+    "Package.swift": "8b6da4bbd77782a8cd198b03d129594cd8bb2e72a953cc4a3cfd8a46d097ca9b",
+    "Info.plist": "b62f0244837c571f38292e7fea2001d33153f66f943d5682cac6abe5656896b8",
+    "Resources/QuadCastStudio.icns": "ff87676afb0455938c036688fe2c7dc6a83de73ba8d84a886e21d5890e74abd6",
     "Resources/Icon1024.png": "5a7e1f663c60f71097157e775631112aa037bd11fa911d394ceafcd4937c4e97",
+    "Tests/QuadCastStudioCoreTests/ProfileTests.swift": "59994f9bafe627a25d196650ea0778fb365d7d3c7efc3c03db0e5332fdcab09e",
     "Tests/QuadCastStudioCoreTests/LightingTests.swift": "cb8a2540d9882c1d2433f5f1add9a8f232c3ad65b48d6a969d43a12f9dab797b",
-    "Sources/QuadCastStudioCore/Lighting.swift": "0944fa8f4849fdbb822ad3980a1e507ad37919c4d64f7d9720f5853c2cb8d0a9",
-    "Sources/QuadCastStudio/DeviceController.swift": "3326bed61ca6dcb1fd91bbaf2354d9829904d7cad03d9a2c59562948262fd962",
-    "Sources/QuadCastStudio/QuadCastStudioApp.swift": "4b8114903b8178fe5f9691a24b22eb866a117cf85d89e941fa2454840567537a"
+    "Tests/QuadCastStudioAppTests/RecoveryTests.swift": "a9ea39b99d9090b8889a07f104dece4da389de297fb5830c480f479199d10742",
+    "Sources/QuadCastStudioCore/OwnedProcess.swift": "32dada062129d5f230ad97f82314493959a7fcd549f88b0c0a3c79afcdbbf43e",
+    "Sources/QuadCastStudioCore/ProfileStore.swift": "799b82a638bee71a698038af15fb030720605347f3b1b870599423d4e0c4c53c",
+    "Sources/QuadCastStudioCore/Lighting.swift": "034d13352ae31738e3fc712113b8335be967d4b5dcfd693852c760a985a1ce89",
+    "Sources/QuadCastStudioCore/ProfileDocument.swift": "46ca1bb386393a97e815523869f1e658b4b0599cd7ef59d5c713e1ce97b7453d",
+    "Sources/QuadCastStudio/DeviceController.swift": "17a24bd049add65060d0a3b692841253f5580eb2eeea2308ffb196e8cbebfd80",
+    "Sources/QuadCastStudio/QuadCastStudioApp.swift": "9a4f8bef19d9070eb5dc10f5e109c35611429d1447557821bf21af8ea225b8a0",
+    "Sources/QuadCastStudio/AppServices.swift": "5c4fd7b852283488c49106706823e6078ea8b1ebf537736f35f564a4c70e6ac0"
   }
 }

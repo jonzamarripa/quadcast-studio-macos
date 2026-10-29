@@ -70,8 +70,8 @@ public struct LightingConfiguration: Codable, Equatable, Sendable {
     }
 
     public static func checkedHex(_ input: String) throws -> String {
-        let normalized = input.trimmingCharacters(in: .whitespacesAndNewlines)
-            .replacingOccurrences(of: "#", with: "").uppercased()
+        let trimmed = input.trimmingCharacters(in: .whitespacesAndNewlines)
+        let normalized = (trimmed.hasPrefix("#") ? String(trimmed.dropFirst()) : trimmed).uppercased()
         guard normalized.count == 6,
               normalized.unicodeScalars.allSatisfy({ (48...57).contains(Int($0.value)) || (65...70).contains(Int($0.value)) }) else {
             throw LightingValidationError.invalidColor(input)
@@ -80,14 +80,27 @@ public struct LightingConfiguration: Codable, Equatable, Sendable {
     }
 }
 
-public struct SavedProfile: Identifiable, Codable, Equatable {
+public struct SavedProfile: Identifiable, Codable, Equatable, Sendable {
     public var id: UUID
     public var name: String
+    public var isFavorite: Bool
     public var configuration: LightingConfiguration
 
-    public init(id: UUID = UUID(), name: String, configuration: LightingConfiguration) {
+    public init(id: UUID = UUID(), name: String, configuration: LightingConfiguration, isFavorite: Bool = false) {
         self.id = id
         self.name = name
+        self.isFavorite = isFavorite
         self.configuration = configuration
+    }
+}
+
+extension SavedProfile {
+    private enum CodingKeys: String, CodingKey { case id, name, configuration, isFavorite }
+    public init(from decoder: Decoder) throws {
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        id = try values.decode(UUID.self, forKey: .id)
+        name = try values.decode(String.self, forKey: .name)
+        configuration = try values.decode(LightingConfiguration.self, forKey: .configuration)
+        isFavorite = try values.decodeIfPresent(Bool.self, forKey: .isFavorite) ?? false
     }
 }

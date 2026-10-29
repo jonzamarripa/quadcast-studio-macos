@@ -1,20 +1,13 @@
-# QuadCast Studio v0.1.1 — historical source snapshot
+# QuadCast Studio v0.2.0 — audited source snapshot
 
-Unofficial SwiftUI lighting utility for the original HyperX QuadCast S. Not affiliated with HP or HyperX.
+Unofficial native macOS lighting controller for the original HyperX QuadCast S. Not affiliated with HP or HyperX.
 
-This tag preserves the actual v0.1.1 build inputs supplied by the owner. Publication is a reconstructed, privacy-audited snapshot, not an original development commit. Sources, Tests, Package.swift, Info.plist, build-app.sh and Resources are unchanged. Private development history remains local.
+This reconstructed publication snapshot preserves actual accepted v0.2.0 source/build inputs. Private development history remains local. File hashes are in SOURCE_PROVENANCE.json.
 
-## Build
+Use full Xcode on Apple Silicon, then run `swift test` and `./build-app.sh`. The app is assembled in `dist/` with local ad-hoc signing. No notarized installer is distributed. Package deployment target is macOS 13; automation was tested on macOS 27.2 with Xcode 27.1, not every supported deployment release.
 
-Use full Xcode on Apple Silicon. From this source directory:
+Requires separately installed Homebrew QuadcastRGB 1.0.5 (`brew install quadcastrgb`). No CLI is bundled. Quit competing Terminal lighting controllers with Control+C. Preserve normal microphone audio; there is no audio processing, firmware, gain or physical mute control. Preview/process activity is not LED readback.
 
-```bash
-swift test
-swift build -c release --product QuadCastStudio
-```
+This version adds menu-bar controls, native colors/hex editing, profiles with validated JSON import/export, owned-process recovery, optional login and explicit reconnect-restore consent. Owner reported 8/8 physical checks; the accepted run passed 24 automated tests. These are single-configuration observations.
 
-The historical `build-app.sh` is also supplied unchanged. Its packaging paths/toolchain assumptions can differ on newer SwiftPM versions; do not treat a build from source as a notarized installer.
-
-Hardware control needs separately installed Homebrew QuadcastRGB (`brew install quadcastrgb`). The executable is not included. Quit other lighting controllers before applying. No LED-state readback exists. No audio processing, gain, physical mute or firmware controls are implemented.
-
-QuadcastRGB by Ors1mer is GPL-2.0-only: https://github.com/Ors1mer/QuadcastRGB. Original app code is MIT-licensed; Resources artwork is excluded pending provenance confirmation. See LICENSE and THIRD_PARTY_NOTICES.md. No ready-to-install binary is distributed. Developer ID signing, notarization and second-Mac install testing remain outstanding.
+QuadcastRGB by Ors1mer is GPL-2.0-only: https://github.com/Ors1mer/QuadcastRGB. Original app code is MIT-licensed; Resources artwork is excluded pending provenance confirmation. Developer ID signing, notarization and another-Mac installation testing remain outstanding. Do not disable Gatekeeper system-wide.

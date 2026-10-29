@@ -1,57 +1,41 @@
 import AppKit
 import SwiftUI
+import UniformTypeIdentifiers
 import QuadCastStudioCore
 
 @main
 @MainActor
 struct QuadCastStudioApp: App {
+    @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
     @StateObject private var controller = DeviceController()
-
+    @StateObject private var profiles = ProfileStore()
+    @StateObject private var session = StudioSession()
+    @StateObject private var login = LoginService()
     var body: some Scene {
-        WindowGroup("QuadCast Studio") {
-            MainWindow(controller: controller)
+        WindowGroup("QuadCast Studio", id: "studio") {
+            MainWindow(controller: controller, profiles: profiles, session: session, login: login)
                 .frame(minWidth: 820, minHeight: 660)
                 .preferredColorScheme(.dark)
-                .onReceive(NotificationCenter.default.publisher(for: NSApplication.willTerminateNotification)) { _ in
-                    controller.stopForQuit()
-                }
+                .onAppear { appDelegate.controller = controller }
         }
         .windowStyle(.titleBar)
         .defaultSize(width: 1050, height: 760)
-    }
-}
-
-@MainActor
-final class ProfileStore: ObservableObject {
-    @Published private(set) var saved: [SavedProfile] = []
-    private let key = "QuadCastStudio.CustomProfiles.v1"
-
-    init() {
-        if let data = UserDefaults.standard.data(forKey: key),
-           let profiles = try? JSONDecoder().decode([SavedProfile].self, from: data) {
-            saved = profiles
+        .commands {
+            CommandGroup(after: .newItem) {
+                Button("Apply lighting") { controller.apply(session.draft) }
+                    .keyboardShortcut(.return, modifiers: .command).disabled(!controller.canApply)
+                Button("Stop controller") { controller.stopController() }
+                    .keyboardShortcut(".", modifiers: .command).disabled(controller.busy)
+            }
         }
-    }
-
-    func save(name: String, configuration: LightingConfiguration) {
-        let cleaned = name.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !cleaned.isEmpty else { return }
-        saved.append(SavedProfile(name: String(cleaned.prefix(60)), configuration: configuration))
-        persist()
-    }
-
-    func delete(id: UUID) {
-        saved.removeAll { $0.id == id }
-        persist()
-    }
-
-    private func persist() {
-        guard let data = try? JSONEncoder().encode(saved) else { return }
-        UserDefaults.standard.set(data, forKey: key)
+        MenuBarExtra("QuadCast Studio", systemImage: controller.microphone == nil ? "mic.slash" : "mic") {
+            MenuBarController(controller: controller, profiles: profiles, session: session)
+                .onAppear { appDelegate.controller = controller }
+        }.menuBarExtraStyle(.window)
     }
 }
 
-private struct BuiltInPreset: Identifiable {
+struct BuiltInPreset: Identifiable {
     let name: String
     let configuration: LightingConfiguration
     var id: String { name }
@@ -69,11 +53,15 @@ private struct BuiltInPreset: Identifiable {
 @MainActor
 struct MainWindow: View {
     @ObservedObject var controller: DeviceController
-    @StateObject private var profiles = ProfileStore()
-    @State private var draft: LightingConfiguration = .studioCyan
+    @ObservedObject var profiles: ProfileStore
+    @ObservedObject var session: StudioSession
+    @ObservedObject var login: LoginService
     @State private var showingSave = false
     @State private var profileName = ""
     @State private var showingDiagnostics = false
+    @State private var renamingID: UUID?
+    @State private var deleting: SavedProfile?
+    @State private var showingRestoreConsent = false
 
     private let background = Color(hex: "0B0D10")
     private let panel = Color(hex: "171A1F")
@@ -98,14 +86,20 @@ struct MainWindow: View {
                 .padding(28)
             }
         }
-        .onReceive(Timer.publish(every: 2.5, on: .main, in: .common).autoconnect()) { _ in
-            controller.refreshConnection()
-        }
-        .onReceive(NSWorkspace.shared.notificationCenter.publisher(for: NSWorkspace.didWakeNotification)) { _ in
-            controller.refreshConnection()
-        }
         .sheet(isPresented: $showingSave) { saveSheet }
         .sheet(isPresented: $showingDiagnostics) { diagnosticsSheet }
+        .alert("Profile operation failed", isPresented: Binding(get: { session.message != nil }, set: { if !$0 { session.message = nil } })) {
+            Button("OK") { session.message = nil }
+        } message: { Text(session.message ?? "") }
+        .confirmationDialog("Delete profile?", isPresented: Binding(get: { deleting != nil }, set: { if !$0 { deleting = nil } }), titleVisibility: .visible) {
+            Button("Delete", role: .destructive) { if let profile = deleting { session.perform { try profiles.delete(id: profile.id) } }; deleting = nil }
+            Button("Cancel", role: .cancel) { deleting = nil }
+        } message: { Text("Delete \(deleting?.name ?? "this profile") from the local library?") }
+        .alert("Restore lighting after reconnect?", isPresented: $showingRestoreConsent) {
+            Button("Enable restore") { controller.restoreAfterReconnect = true }
+            Button("Cancel", role: .cancel) {}
+        } message: { Text("After USB reconnect or wake, QuadCast Studio may automatically apply the last successfully started lighting configuration. Launching the app alone does not apply lighting. You can turn this off at any time.") }
+        .onAppear { if let error = profiles.loadError { session.message = error } }
     }
 
     private var header: some View {
@@ -136,7 +130,7 @@ struct MainWindow: View {
                     Image(systemName: "arrow.clockwise")
                 }
                 .buttonStyle(.borderless)
-                .help("Refresh read-only USB connection status")
+                .help("Refresh read-only USB connection status").accessibilityLabel("Check USB connection")
             }
             .padding(11)
             .background(panel, in: RoundedRectangle(cornerRadius: 12))
@@ -165,9 +159,9 @@ struct MainWindow: View {
                     .tracking(1.5)
                     .foregroundStyle(muted)
                 Spacer()
-                Button { showingSave = true } label: {
+                Button { renamingID = nil; profileName = ""; showingSave = true } label: {
                     Image(systemName: "plus.circle.fill").foregroundStyle(cyan)
-                }.buttonStyle(.plain).help("Save current configuration")
+                }.buttonStyle(.plain).help("Save current configuration").accessibilityLabel("Save current configuration")
             }
             if profiles.saved.isEmpty {
                 Text("Your custom profiles will appear here.")
@@ -175,24 +169,43 @@ struct MainWindow: View {
                     .foregroundStyle(muted)
                     .padding(.vertical, 12)
             } else {
-                ForEach(profiles.saved) { item in
+                ForEach(profiles.ordered) { item in
                     HStack {
                         Button {
-                            draft = item.configuration
+                            session.draft = item.configuration
                         } label: {
                             HStack(spacing: 10) {
-                                Image(systemName: "bookmark")
+                                Image(systemName: item.isFavorite ? "star.fill" : "bookmark")
                                 Text(item.name).lineLimit(1)
                                 Spacer()
                             }
                         }
                         .buttonStyle(.plain)
-                        Button(role: .destructive) { profiles.delete(id: item.id) } label: {
-                            Image(systemName: "trash").foregroundStyle(muted)
-                        }.buttonStyle(.plain).help("Delete profile")
+                        Menu {
+                            Button("Rename…") { renamingID = item.id; profileName = item.name; showingSave = true }
+                            Button("Duplicate") { session.perform { try profiles.duplicate(id: item.id) } }
+                            Button(item.isFavorite ? "Remove favorite" : "Favorite") { session.perform { try profiles.toggleFavorite(id: item.id) } }
+                            Divider()
+                            Button("Delete…", role: .destructive) { deleting = item }
+                        } label: { Image(systemName: "ellipsis.circle") }
+                        .menuStyle(.borderlessButton).frame(width: 24)
+                        .accessibilityLabel("Actions for \(item.name)")
                     }.padding(8)
                 }
             }
+            HStack {
+                Button("Import JSON…") { importProfiles() }
+                Button("Export JSON…") { exportProfiles() }.disabled(profiles.saved.isEmpty)
+            }.font(.caption)
+            if let error = profiles.loadError { Text(error).font(.caption).foregroundStyle(.orange) }
+            Divider()
+            Toggle("Launch at login", isOn: Binding(get: { login.enabled }, set: { login.setEnabled($0) }))
+            Text(login.detail).font(.caption).foregroundStyle(muted)
+            Button("Refresh login status") { login.refresh() }.font(.caption)
+            Toggle("Restore after reconnect / wake", isOn: Binding(get: { controller.restoreAfterReconnect }, set: { enabled in
+                if enabled { showingRestoreConsent = true } else { controller.restoreAfterReconnect = false }
+            }))
+            Text("Off by default. Restore uses the last applied configuration, not an uncommitted preview.").font(.caption).foregroundStyle(muted)
             Spacer(minLength: 10)
             Button { showingDiagnostics = true } label: {
                 Label("Connection diagnostics", systemImage: "stethoscope")
@@ -206,7 +219,7 @@ struct MainWindow: View {
     }
 
     private func profileButton(title: String, config: LightingConfiguration) -> some View {
-        Button { draft = config } label: {
+        Button { session.select(title, config) } label: {
             HStack(spacing: 11) {
                 Circle()
                     .fill(config.effect == .off ? Color.gray : Color(hex: config.upperHex))
@@ -214,10 +227,10 @@ struct MainWindow: View {
                     .overlay(Circle().stroke(.white.opacity(0.25), lineWidth: 1))
                 Text(title).font(.system(size: 13, weight: .medium))
                 Spacer()
-                if draft == config { Image(systemName: "checkmark").foregroundStyle(cyan) }
+                if session.draft == config { Image(systemName: "checkmark").foregroundStyle(cyan) }
             }
             .padding(11)
-            .background(draft == config ? cyan.opacity(0.10) : Color.white.opacity(0.035),
+            .background(session.draft == config ? cyan.opacity(0.10) : Color.white.opacity(0.035),
                         in: RoundedRectangle(cornerRadius: 10))
         }
         .buttonStyle(.plain)
@@ -226,7 +239,7 @@ struct MainWindow: View {
     private var visualizer: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack {
-                Label("LIVE DESIGN PREVIEW", systemImage: "eye")
+                Label("DESIGN PREVIEW", systemImage: "eye")
                     .font(.system(size: 11, weight: .semibold))
                     .tracking(1.3)
                     .foregroundStyle(muted)
@@ -239,16 +252,17 @@ struct MainWindow: View {
                 RoundedRectangle(cornerRadius: 14)
                     .fill(Color(hex: "10151C"))
                 Circle()
-                    .fill((draft.effect == .off ? .clear : Color(hex: draft.upperHex)).opacity(0.35))
+                    .fill((session.draft.effect == .off ? .clear : Color(hex: session.draft.upperHex)).opacity(0.35))
                     .frame(width: 170, height: 170)
                     .blur(radius: 52)
                     .offset(y: -25)
                 VStack(spacing: 0) {
                     Capsule()
-                        .fill(LinearGradient(colors: draft.effect == .off ? [Color(hex: "30343B")] :
-                            [Color(hex: draft.upperHex), Color(hex: draft.lowerHex)],
+                        .fill(LinearGradient(colors: session.draft.effect == .off ? [Color(hex: "30343B")] :
+                            [Color(hex: session.draft.upperHex), Color(hex: session.draft.lowerHex)],
                             startPoint: .top, endPoint: .bottom))
                         .frame(width: 86, height: 167)
+                        .opacity(session.draft.effect == .off ? 1 : Double(session.draft.brightness) / 100)
                         .overlay {
                             Capsule().stroke(Color.white.opacity(0.25), lineWidth: 2)
                         }
@@ -267,10 +281,12 @@ struct MainWindow: View {
                 .shadow(color: .black.opacity(0.5), radius: 20, y: 8)
             }
             .frame(height: 270)
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel("Illustrative lighting preview, \(session.draft.effect.rawValue), upper \(session.draft.upperHex), lower \(session.draft.lowerHex), brightness \(session.draft.brightness) percent. Not LED state readback.")
             HStack {
-                Label("Upper: #\(draft.upperHex)", systemImage: "circle.tophalf.filled")
+                Label("Upper: #\(session.draft.upperHex)", systemImage: "circle.tophalf.filled")
                 Spacer()
-                Label("Lower: #\(draft.lowerHex)", systemImage: "circle.bottomhalf.filled")
+                Label("Lower: #\(session.draft.lowerHex)", systemImage: "circle.bottomhalf.filled")
             }
             .font(.system(size: 11, design: .monospaced))
             .foregroundStyle(muted)
@@ -281,13 +297,15 @@ struct MainWindow: View {
 
     private var editor: some View {
         VStack(alignment: .leading, spacing: 15) {
+            Text("Preview changes stay local until you choose Apply lighting.")
+                .font(.callout).foregroundStyle(muted)
             Text("Lighting controls")
                 .font(.system(size: 18, weight: .bold))
             HStack {
                 Text("Effect")
                     .foregroundStyle(muted)
                 Spacer()
-                Picker("Effect", selection: $draft.effect) {
+                Picker("Effect", selection: $session.draft.effect) {
                     ForEach(LightingEffect.allCases) { effect in
                         Text(effect.rawValue).tag(effect)
                     }
@@ -296,50 +314,58 @@ struct MainWindow: View {
                 .frame(width: 170)
             }
             HStack(spacing: 18) {
-                colorControl("Upper zone", color: $draft.upperHex)
-                colorControl("Lower zone", color: $draft.lowerHex)
+                colorControl("Upper zone", color: $session.draft.upperHex)
+                colorControl("Lower zone", color: $session.draft.lowerHex)
             }
-            .disabled(draft.effect == .off || draft.effect == .wave || draft.effect == .cycle)
+            .disabled(session.draft.effect == .off || session.draft.effect == .wave || session.draft.effect == .cycle)
             VStack(spacing: 4) {
                 HStack {
                     Text("Brightness").foregroundStyle(muted)
                     Spacer()
-                    Text("\(draft.brightness)%").monospacedDigit()
+                    Text("\(session.draft.brightness)%").monospacedDigit()
                 }
-                Slider(value: Binding(get: { Double(draft.brightness) },
-                                      set: { draft.brightness = Int($0.rounded()) }), in: 0...100, step: 1)
-                    .tint(cyan)
-            }.disabled(draft.effect == .off)
-            if draft.effect != .solid && draft.effect != .off {
+                Slider(value: Binding(get: { Double(session.draft.brightness) },
+                                      set: { session.draft.brightness = Int($0.rounded()) }), in: 0...100, step: 1)
+                    .tint(cyan).accessibilityLabel("Preview brightness").accessibilityValue("\(session.draft.brightness) percent")
+            }.disabled(session.draft.effect == .off)
+            if session.draft.effect != .solid && session.draft.effect != .off {
                 VStack(spacing: 4) {
                     HStack {
                         Text("Effect speed").foregroundStyle(muted)
                         Spacer()
-                        Text("\(draft.speed)%").monospacedDigit()
+                        Text("\(session.draft.speed)%").monospacedDigit()
                     }
-                    Slider(value: Binding(get: { Double(draft.speed) },
-                                          set: { draft.speed = Int($0.rounded()) }), in: 1...100, step: 1)
-                        .tint(cyan)
+                    Slider(value: Binding(get: { Double(session.draft.speed) },
+                                          set: { session.draft.speed = Int($0.rounded()) }), in: 1...100, step: 1)
+                        .tint(cyan).accessibilityLabel("Effect speed").accessibilityValue("\(session.draft.speed) percent")
                 }
             }
-            if draft.effect == .cycle || draft.effect == .wave {
+            if session.draft.effect == .cycle || session.draft.effect == .wave {
                 Text("Cycle and wave use the controller's built-in rainbow palette.")
                     .font(.system(size: 11)).foregroundStyle(muted)
             }
             Divider().overlay(.white.opacity(0.08))
             HStack {
-                Button { controller.apply(draft) } label: {
+                Button { controller.apply(session.draft) } label: {
                     HStack { Image(systemName: "bolt.fill"); Text("Apply lighting") }
                         .frame(minWidth: 155)
                 }
                 .buttonStyle(.borderedProminent)
                 .tint(cyan)
                 .foregroundStyle(.black)
-                .disabled(!controller.canApply)
-                Button("Test cyan") { draft = .studioCyan; controller.apply(.studioCyan) }
+                .disabled(!controller.canApply || (try? session.draft.arguments()) == nil)
+                Button("Test cyan") { session.draft = .studioCyan; controller.apply(.studioCyan) }
                     .disabled(!controller.canApply)
+                Button("RGB off") { session.select("Lights Off", .lightsOff); controller.apply(.lightsOff) }.disabled(!controller.canApply)
+            }
+            if (try? session.draft.arguments()) == nil {
+                Text("Check both RGB values, brightness and effect speed before applying.").foregroundStyle(.orange)
+            }
+            HStack {
+                Button("Stop controller") { controller.stopController() }
+                    .disabled(controller.busy || controller.ownedPID == nil)
                 Spacer()
-                Button { showingSave = true } label: {
+                Button { renamingID = nil; profileName = ""; showingSave = true } label: {
                     Label("Save profile", systemImage: "square.and.arrow.down")
                 }
             }
@@ -368,13 +394,11 @@ struct MainWindow: View {
                     set: { color.wrappedValue = $0.toHex() }
                 ), supportsOpacity: false)
                 .labelsHidden()
-                .frame(width: 38)
+                .frame(width: 38).accessibilityLabel("\(title) color")
                 TextField("RRGGBB", text: color)
                     .textFieldStyle(.roundedBorder)
                     .font(.system(size: 12, design: .monospaced))
-                    .onChange(of: color.wrappedValue) { newValue in
-                        if newValue.count > 7 { color.wrappedValue = String(newValue.prefix(7)) }
-                    }
+                    .accessibilityLabel("\(title) hexadecimal color")
             }
         }.frame(maxWidth: .infinity)
     }
@@ -383,7 +407,7 @@ struct MainWindow: View {
         VStack(alignment: .leading, spacing: 7) {
             HStack(spacing: 8) {
                 Image(systemName: "info.circle").foregroundStyle(statusColor)
-                Text(controller.state.label).fontWeight(.semibold)
+                Text(controller.state.label).fontWeight(.semibold).accessibilityAddTraits(.updatesFrequently)
             }
             if let message = controller.lastError {
                 Text(message).foregroundStyle(Color(hex: "FFBC92"))
@@ -416,22 +440,47 @@ struct MainWindow: View {
 
     private var saveSheet: some View {
         VStack(alignment: .leading, spacing: 16) {
-            Text("Save lighting profile").font(.title2.weight(.bold))
+            Text(renamingID == nil ? "Save lighting profile" : "Rename lighting profile").font(.title2.weight(.bold))
             TextField("Profile name", text: $profileName)
             HStack {
                 Spacer()
-                Button("Cancel") { showingSave = false; profileName = "" }
+                Button("Cancel") { showingSave = false; profileName = ""; renamingID = nil }.keyboardShortcut(.cancelAction)
                 Button("Save") {
-                    profiles.save(name: profileName, configuration: draft)
-                    profileName = ""
-                    showingSave = false
+                    do {
+                        if let id = renamingID { try profiles.rename(id: id, to: profileName) }
+                        else { try profiles.save(name: profileName, configuration: session.draft) }
+                        profileName = ""; renamingID = nil; showingSave = false
+                    } catch { session.message = error.localizedDescription; showingSave = false }
                 }
                 .buttonStyle(.borderedProminent)
-                .disabled(profileName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                .keyboardShortcut(.defaultAction)
+                .disabled((try? ProfileDocument.checkedName(profileName)) == nil)
             }
         }
         .padding(24)
         .frame(width: 400)
+    }
+
+    private func importProfiles() {
+        let panel = NSOpenPanel()
+        panel.allowedContentTypes = [.json]; panel.allowsMultipleSelection = false
+        panel.begin { response in
+            guard response == .OK, let url = panel.url else { return }
+            session.perform {
+                let handle = try FileHandle(forReadingFrom: url)
+                defer { try? handle.close() }
+                let data = try handle.read(upToCount: ProfileDocument.maximumBytes + 1) ?? Data()
+                try profiles.importJSON(data)
+            }
+        }
+    }
+    private func exportProfiles() {
+        let panel = NSSavePanel()
+        panel.allowedContentTypes = [.json]; panel.nameFieldStringValue = "QuadCast-Profiles.json"
+        panel.begin { response in
+            guard response == .OK, let url = panel.url else { return }
+            session.perform { try profiles.exportJSON().write(to: url, options: .atomic) }
+        }
     }
 
     private var diagnosticsSheet: some View {
@@ -450,7 +499,7 @@ struct MainWindow: View {
                     NSPasteboard.general.setString(controller.diagnostics, forType: .string)
                 }
                 Spacer()
-                Button("Close") { showingDiagnostics = false }
+                Button("Close") { showingDiagnostics = false }.keyboardShortcut(.cancelAction)
             }
         }
         .padding(24)

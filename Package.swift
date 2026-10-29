@@ -11,6 +11,7 @@ let package = Package(
     targets: [
         .target(name: "QuadCastStudioCore"),
         .executableTarget(name: "QuadCastStudio", dependencies: ["QuadCastStudioCore"]),
-        .testTarget(name: "QuadCastStudioCoreTests", dependencies: ["QuadCastStudioCore"])
+        .testTarget(name: "QuadCastStudioCoreTests", dependencies: ["QuadCastStudioCore"]),
+        .testTarget(name: "QuadCastStudioAppTests", dependencies: ["QuadCastStudio", "QuadCastStudioCore"])
     ]
 )
