@@ -1,0 +1,14 @@
+{
+  "version": "v0.1.1",
+  "publication": "reconstructed audited source snapshot; no original Git repository supplied",
+  "unchanged_build_inputs_sha256": {
+    "build-app.sh": "932ba3aad116797e73632a2b7f129f0833354920aca8ebd89f3bb668641de769",
+    "Package.swift": "1770c84695398cb796679b4aff491a2734c284677f9d5208b52f258597d23d8a",
+    "Info.plist": "eafabc4844e26de9fb1181cbbcd2a1dd84584b0e6c62ed02760a100eaf364694",
+    "Resources/Icon1024.png": "5a7e1f663c60f71097157e775631112aa037bd11fa911d394ceafcd4937c4e97",
+    "Tests/QuadCastStudioCoreTests/LightingTests.swift": "cb8a2540d9882c1d2433f5f1add9a8f232c3ad65b48d6a969d43a12f9dab797b",
+    "Sources/QuadCastStudioCore/Lighting.swift": "0944fa8f4849fdbb822ad3980a1e507ad37919c4d64f7d9720f5853c2cb8d0a9",
+    "Sources/QuadCastStudio/DeviceController.swift": "3326bed61ca6dcb1fd91bbaf2354d9829904d7cad03d9a2c59562948262fd962",
+    "Sources/QuadCastStudio/QuadCastStudioApp.swift": "4b8114903b8178fe5f9691a24b22eb866a117cf85d89e941fa2454840567537a"
+  }
+}
