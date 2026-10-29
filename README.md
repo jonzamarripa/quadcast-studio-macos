@@ -98,3 +98,7 @@ Maintainer: Jonathan Iker Zamarripa.
 Public tags are audited snapshots of the actual completed versions, reconstructed for publication because local development metadata/docs contain private information. All application, test and build inputs are preserved byte-for-byte; each tag includes a SHA-256 provenance manifest. They are not represented as original uninterrupted development commits. Private history and accepted apps are retained locally.
 
 No authentic privacy-reviewed application screenshot is included yet. No mockup or vendor artwork is used as a screenshot.
+
+## Compatibility, privacy and help
+
+See [compatibility](docs/COMPATIBILITY.md), [troubleshooting](docs/TROUBLESHOOTING.md), [privacy](docs/PRIVACY.md), and [release gates](docs/RELEASE_GATES.md).

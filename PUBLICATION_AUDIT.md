@@ -29,10 +29,10 @@ All three audited source snapshots compiled in release configuration using full 
 
 Build/test logs are retained privately, not in public Git history. Source checksums accompany separately prepared archives. No ready-to-install app binary is being published: Developer ID signing, notarization, Gatekeeper/second-Mac installation and distribution rights are unresolved.
 
-## Missing inputs
+## Publication documents
 
-CODEX_PUBLISH_ALL.md and the supplied professional README were accessible. QuadCastStudio_GitHub_Launch_Kit.zip was not found at the supplied location, Downloads or chat attachments. INSTALL/SECURITY/CONTRIBUTING/LICENSE_REVIEW/issue templates/release-note drafts were prepared from inspected implementation as interim material, not claimed to be the supplied missing files. Reconcile the actual launch kit before publication.
+The owner authorized proceeding without the failed ZIP download and supplied the combined publication document. README.md and CODEX_PUBLISH_ALL.md informed this work. Supporting install, compatibility, troubleshooting, privacy, contribution, security, issue-template and release documents were generated directly from inspected code. Stale planned-v0.2.1 and login/VoiceOver-certification claims in the drafts were corrected against actual evidence.
 
 ## Owner licensing decision
 
-The owner selected MIT for original app code after the first staging pass. LICENSE and notices were added to each still-unpublished snapshot without changing its build inputs. Source archives were regenerated. Resource artwork remains excluded pending ownership confirmation. The supplied ZIP path was checked again and still returned file-not-found; publishing authentication is not active.
+The owner selected MIT for original app code after the first staging pass. LICENSE and notices were added to each still-unpublished snapshot without changing its build inputs. Source archives were regenerated. Resource artwork remains excluded pending ownership confirmation. The owner subsequently authorized proceeding without the ZIP. Publishing authentication is now active for jonzamarripa.
